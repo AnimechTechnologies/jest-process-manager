@@ -123,6 +123,18 @@ export interface JestProcessManagerOptions {
      * Options which will be passed down to the spawn of the process
      */
     options?: SpawnOptions;
+    /**
+     * Signal to use when tearing down the process, either as a string or number.
+     * @default 'SIGTERM'
+     *
+     * ```js
+     * module.exports = {
+     *   command: 'npm run start',
+     *   killSignal: 'SIGKILL',
+     * }
+     * ```
+     */
+    killSignal?: string | number;
 }
 
 export declare class JestProcessManagerError extends Error {

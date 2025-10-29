@@ -18,10 +18,11 @@ import type { CustomSpawnD, JestProcessManagerOptions } from './types';
 
 import { DEFAULT_CONFIG, ERROR_NO_COMMAND, ERROR_PORT_USED, ERROR_TIMEOUT } from './constants';
 
-const pTreeKill = promisify(treeKill)
+const treeKillWithSignal: (pid: number, signal?: string | number, callback?: (error?: Error) => void) => void = treeKill;
+const pTreeKill = promisify(treeKillWithSignal);
 const pExec = promisify(exec);
 
-function spawnd(command: string, options: SpawnOptions): CustomSpawnD {
+function spawnd(command: string, killSignal: string | number | undefined, options: SpawnOptions): CustomSpawnD {
   const proc = <CustomSpawnD>spawn(command, options)
   const cleanExit = (code = 1) => {
     if (proc?.pid) {
@@ -44,7 +45,7 @@ function spawnd(command: string, options: SpawnOptions): CustomSpawnD {
     removeExitHandler()
     proc.removeAllListeners('exit')
     proc.removeAllListeners('error')
-    return pTreeKill(proc.pid).catch(() => {
+    return pTreeKill(proc.pid, killSignal).catch(() => {
       /* ignore error */
     })
   }
@@ -78,9 +79,9 @@ const logProcDetection = (procName: string, port: number) => {
 
 type Unwrap<T> = T extends (...args: any) => Promise<infer U> ? U : T
 
-async function killProc(proc: Unwrap<typeof findProcess>[0]): Promise<void> {
-  console.log(chalk.yellow(`Killing process ${proc.name}...`))
-  await pTreeKill(proc.pid)
+async function killProc(proc: Unwrap<typeof findProcess>[0], killSignal: string | number | undefined): Promise<void> {
+  console.log(chalk.yellow(`Killing process ${proc.name}...${killSignal !== undefined ? ` (signal: ${killSignal})` : ''}`))
+  await pTreeKill(proc.pid, killSignal)
   console.log(chalk.green(`Successfully killed process ${proc.name}`))
 }
 
@@ -92,7 +93,7 @@ function runServer(config: JestProcessManagerOptions, index: number) {
     )
   }
 
-  servers[index] = spawnd(config.command, {
+  servers[index] = spawnd(config.command, config.killSignal, {
     shell: true,
     cwd: cwd(),
     ...config.options,
@@ -185,7 +186,7 @@ async function setupJestServer(providedConfig: JestProcessManagerOptions, index:
       )
       const [portProcess] = await findProcess('port', config.port)
       logProcDetection(portProcess.name, config.port)
-      await killProc(portProcess)
+      await killProc(portProcess, config.killSignal)
     },
     async ask() {
       console.log('')
@@ -200,7 +201,7 @@ async function setupJestServer(providedConfig: JestProcessManagerOptions, index:
       if (answers.kill) {
         const [portProcess] = await findProcess('port', config.port)
         logProcDetection(portProcess.name, config.port)
-        await killProc(portProcess)
+        await killProc(portProcess, config.killSignal)
       } else {
         process.exit(1)
       }
@@ -249,7 +250,7 @@ async function setupJestServer(providedConfig: JestProcessManagerOptions, index:
     } catch (err) {
       const [portProcess] = await findProcess('port', config.port)
       if (portProcess) {
-        await killProc(portProcess)
+        await killProc(portProcess, config.killSignal)
       }
       throw new JestProcessManagerError(
         `Server has taken more than ${launchTimeout}ms to start.`,
